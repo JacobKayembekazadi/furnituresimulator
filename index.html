@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Living Room (Ultra-Realistic)</title>
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; overflow: hidden; }
+        canvas { display: block; }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            max-width: 300px;
+            line-height: 1.6;
+            pointer-events: none; /* So it doesn't interfere with controls */
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="instructions">
+        <strong>Controls:</strong><br>
+        - <strong>Rotate:</strong> Left-click and drag<br>
+        - <strong>Zoom:</strong> Scroll wheel<br>
+        - <strong>Pan:</strong> Right-click and drag<br>
+        - <strong>Move Furniture:</strong> Click and drag furniture.
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DragControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/stats.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/RectAreaLightUniformsLib.js"></script>
+
+    <script>
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 10);
+
+        // --- RENDERER AND POST-PROCESSING ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.body.appendChild(renderer.domElement);
+
+        // Post-processing composer
+        const renderScene = new THREE.RenderPass(scene, camera);
+        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.4, 0.85);
+        bloomPass.threshold = 0.9;
+        bloomPass.strength = 0.5;
+        bloomPass.radius = 0.5;
+        
+        const composer = new THREE.EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- CONTROLS ---
+        const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+        orbitControls.enableDamping = true;
+        orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
+        orbitControls.target.set(0, 1, 0);
+
+        // --- TEXTURE GENERATION ---
+        function createWoodFloorTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const context = canvas.getContext('2d');
+            
+            context.fillStyle = '#8B5A2B';
+            context.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 512; i += 64) {
+                context.strokeStyle = 'rgba(0,0,0,0.1)';
+                context.lineWidth = 2;
+                context.beginPath();
+                context.moveTo(i, 0);
+                context.lineTo(i, 512);
+                context.stroke();
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(2, 2);
+            return texture;
+        }
+
+        function createFabricTexture() {
+             const canvas = document.createElement('canvas');
+             canvas.width = 64;
+             canvas.height = 64;
+             const context = canvas.getContext('2d');
+             context.fillStyle = '#696969';
+             context.fillRect(0,0,64,64);
+             context.strokeStyle = 'rgba(0,0,0,0.1)';
+             for(let i=0; i<64; i+=4) {
+                 context.beginPath();
+                 context.moveTo(0,i); context.lineTo(64,i);
+                 context.moveTo(i,0); context.lineTo(i,64);
+                 context.stroke();
+             }
+             const texture = new THREE.CanvasTexture(canvas);
+             texture.wrapS = THREE.RepeatWrapping;
+             texture.wrapT = THREE.RepeatWrapping;
+             texture.repeat.set(16, 16);
+             return texture;
+        }
+
+        // --- LIGHTING ---
+        THREE.RectAreaLightUniformsLib.init();
+        
+        const windowLight = new THREE.RectAreaLight(0xffe0b3, 5, 2.5, 3);
+        windowLight.position.set(-4.9, 3, 0);
+        windowLight.rotation.y = Math.PI / 2;
+        scene.add(windowLight);
+
+        const fillLight = new THREE.HemisphereLight(0x404040, 0x000000, 0.5);
+        scene.add(fillLight);
+        
+        const lampLight = new THREE.PointLight(0xffd6a3, 1, 5, 2);
+        lampLight.position.set(4.2, 1.8, 2.5);
+        lampLight.castShadow = true;
+        scene.add(lampLight);
+        
+        // --- REFLECTIONS ---
+        const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256, {
+            format: THREE.RGBFormat,
+            generateMipmaps: true,
+            minFilter: THREE.LinearMipmapLinearFilter
+        });
+        const cubeCamera = new THREE.CubeCamera(1, 1000, cubeRenderTarget);
+        scene.add(cubeCamera);
+
+        // --- MATERIALS ---
+        const floorMaterial = new THREE.MeshStandardMaterial({ map: createWoodFloorTexture(), roughness: 0.7, metalness: 0.1 });
+        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f3e6, roughness: 0.9 });
+        const accentWallMaterial = new THREE.MeshStandardMaterial({ color: 0xB8860B, roughness: 0.3, metalness: 0.8, envMap: cubeRenderTarget.texture });
+        const sofaMaterial = new THREE.MeshStandardMaterial({ map: createFabricTexture(), roughness: 1.0 });
+        const woodFurnitureMaterial = new THREE.MeshStandardMaterial({ color: 0x3d1c02, roughness: 0.6 });
+        const glassMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.5, transparent: true, opacity: 0.2, envMap: cubeRenderTarget.texture });
+        const metalMaterial = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.2, metalness: 1.0, envMap: cubeRenderTarget.texture });
+        const plantLeafMaterial = new THREE.MeshStandardMaterial({ color: 0x2E8B57, roughness: 0.8 });
+        const potMaterial = new THREE.MeshStandardMaterial({ color: 0x995522, roughness: 0.9 });
+        const artFrameMaterial = new THREE.MeshStandardMaterial({color: 0x221100});
+        const artMat1 = new THREE.MeshBasicMaterial({color: 0x77bb99});
+
+        // --- ROOM GEOMETRY ---
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.2, 10.2), floorMaterial);
+        floor.position.y = -0.1;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        const wall1 = new THREE.Mesh(new THREE.BoxGeometry(10.2, 6, 0.2), wallMaterial);
+        wall1.position.set(0, 3, -5.1);
+        wall1.receiveShadow = true;
+        scene.add(wall1);
+
+        const wall2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 6, 10), accentWallMaterial);
+        wall2.position.set(-5.1, 3, 0);
+        wall2.receiveShadow = true;
+        scene.add(wall2);
+        
+        // --- WINDOW ---
+        const windowGroup = new THREE.Group();
+        const windowPane = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.5, 3), new THREE.MeshBasicMaterial({color: 0xadd8e6, transparent:true, opacity:0.1}));
+        windowPane.position.set(-5, 3, 0);
+        windowGroup.add(windowPane);
+        const frameMat = new THREE.MeshStandardMaterial({color: 0x805b38});
+        const frameH = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.7, 0.2), frameMat);
+        const frameV = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 3.2), frameMat);
+        frameH.position.set(-5, 3, 1.6);
+        windowGroup.add(frameH, frameH.clone().translateZ(-3.2));
+        frameV.position.set(-5, 3 + 1.25, 0);
+        windowGroup.add(frameV, frameV.clone().translateY(-2.5));
+        scene.add(windowGroup);
+        
+        // --- ARTWORK ---
+        const art1 = new THREE.Group();
+        art1.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.1), artFrameMaterial));
+        art1.add(new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.12), artMat1));
+        art1.position.set(2, 3.5, -5);
+        scene.add(art1);
+
+        // --- FURNITURE (Draggable Objects) ---
+        const draggableObjects = [];
+
+        function createSofa() {
+            const sofa = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.5), sofaMaterial);
+            sofa.add(base);
+
+            const cushionGeo = new THREE.BoxGeometry(1.4, 0.3, 1.3);
+            const cushion1 = new THREE.Mesh(cushionGeo, sofaMaterial);
+            cushion1.position.set(-0.75, 0.65, 0);
+            const cushion2 = new THREE.Mesh(cushionGeo, sofaMaterial);
+            cushion2.position.set(0.75, 0.65, 0);
+            sofa.add(cushion1, cushion2);
+
+            const back = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 0.4), sofaMaterial);
+            back.position.set(0, 0.8, -0.55);
+            sofa.add(back);
+
+            const arm1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.7, 1.5), sofaMaterial);
+            arm1.position.set(-1.7, 0.35, 0);
+            sofa.add(arm1);
+            sofa.add(arm1.clone().translateX(3.4));
+            
+            sofa.position.y = 0.5;
+            scene.add(sofa);
+            return sofa;
+        }
+
+        const sofa1 = createSofa();
+        sofa1.position.set(2.5, 0.5, 0);
+        sofa1.rotation.y = -Math.PI / 1.8;
+        draggableObjects.push(sofa1);
+
+        const sofa2 = createSofa();
+        sofa2.position.set(-2, 0.5, 2.5);
+        sofa2.rotation.y = Math.PI / 5;
+        draggableObjects.push(sofa2);
+        
+        function createTVStand() {
+            const standGroup = new THREE.Group();
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 0.8), woodFurnitureMaterial);
+            stand.position.set(0, 0.5, 0);
+            standGroup.add(stand);
+            
+            const tv = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.5, 0.1), new THREE.MeshStandardMaterial({color: 0x000000, roughness: 0.2, metalness: 0.5}));
+            tv.position.set(0, 1.75, 0.05);
+            stand.add(tv);
+
+            standGroup.position.set(0, 0, -4.6);
+            scene.add(standGroup);
+            return standGroup;
+        }
+
+        const tvStand = createTVStand();
+        draggableObjects.push(tvStand);
+
+        function createBookShelf() {
+            const shelfGroup = new THREE.Group();
+            const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 4, 0.8), woodFurnitureMaterial);
+            shelfGroup.add(shelf);
+
+            const bookGeo = new THREE.BoxGeometry(0.2, 0.5, 0.6);
+            for(let i = 0; i < 3; i++) {
+                const book = new THREE.Mesh(bookGeo, new THREE.MeshStandardMaterial({color: new THREE.Color(Math.random(), Math.random(), Math.random())}));
+                book.position.set((Math.random()-0.5) * 1, 1.7 - i*0.6, 0);
+                book.rotation.y = (Math.random()-0.5) * 0.2;
+                shelf.add(book);
+            }
+            shelfGroup.position.set(-4.2, 2, -3.5);
+            scene.add(shelfGroup);
+            return shelfGroup;
+        }
+        const bookShelf = createBookShelf();
+        draggableObjects.push(bookShelf);
+        
+        function createCoffeeTable() {
+            const table = new THREE.Group();
+            const top = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.1, 64), glassMaterial);
+            top.position.y = 0.8;
+            table.add(top);
+            const legGeo = new THREE.BoxGeometry(0.1, 0.8, 0.1);
+            const leg1 = new THREE.Mesh(legGeo, metalMaterial);
+            leg1.position.set(0.7, 0.4, 0.7);
+            table.add(leg1, leg1.clone().translateX(-1.4), leg1.clone().translateZ(-1.4), leg1.clone().translateX(-1.4).translateZ(-1.4));
+            
+            table.position.set(0, 0, 1);
+            scene.add(table);
+            return table;
+        }
+        const coffeeTable = createCoffeeTable();
+        draggableObjects.push(coffeeTable);
+
+        // --- DRAG CONTROLS SETUP ---
+        const dragControls = new THREE.DragControls([...draggableObjects], camera, renderer.domElement);
+        dragControls.addEventListener('dragstart', (event) => {
+            orbitControls.enabled = false;
+            event.object.traverse(child => {
+                if(child.material) child.material.emissive.set(0x222222);
+            });
+        });
+        dragControls.addEventListener('drag', (event) => {
+            event.object.position.y = event.object.userData.originalY; // Keep it on the floor
+        });
+        dragControls.addEventListener('dragend', (event) => {
+            orbitControls.enabled = true;
+            event.object.traverse(child => {
+                if(child.material) child.material.emissive.set(0x000000);
+            });
+        });
+        
+        draggableObjects.forEach(obj => {
+            obj.userData.originalY = obj.position.y;
+            obj.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+        });
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            orbitControls.update();
+            
+            // Update reflections
+            cubeCamera.position.copy(coffeeTable.position);
+            cubeCamera.update(renderer, scene);
+
+            // Render with post-processing
+            composer.render();
+        }
+        animate();
+
+        // --- RESIZE HANDLER ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
